@@ -1,0 +1,33 @@
+# Git 管理関連
+.git
+.gitignore
+.dockerignore
+
+# Node.js 関連
+node_modules
+npm-debug.log
+yarn.lock
+pnpm-lock.yaml
+
+# OS / エディタキャッシュ
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# IDE関連
+.vscode
+.idea
+
+# ビルドや一時ファイル
+dist
+build
+coverage
+*.log
+
+# Docker イメージに不要なもの
+test
+tests
+docs

@@ -1,0 +1,73 @@
+name: Publish Docker image to GHCR
+
+on:
+    push:
+        branches: [main] # main へ push → :latest と :sha-<short>
+        tags: ["v*"] # v1.2.3 → 1.2.3/1.2/1 も発行
+    workflow_dispatch:
+
+# 古い実行をキャンセル（同一refで最新のみ稼働）
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+    packages: write # GHCR へ push するのに必要
+    id-token: write # （将来のビルドプロベナンス用にキープ）
+
+jobs:
+    build-and-push:
+        runs-on: ubuntu-latest
+        timeout-minutes: 45
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            # マルチアーキ用セットアップ
+            - name: Set up QEMU
+              uses: docker/setup-qemu-action@v3
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            # GHCR ログイン（GITHUB_TOKEN でOK）
+            - name: Log in to GHCR
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            # 画像名/タグ/OCIラベル自動生成
+            - name: Extract Docker metadata
+              id: meta
+              uses: docker/metadata-action@v5
+              with:
+                  images: ghcr.io/${{ github.repository_owner }}/playwright-e2e-runner
+                  tags: |
+                      type=ref,event=tag                                   # v1.2.3（そのまま）
+                      type=semver,pattern={{version}}                      # 1.2.3
+                      type=semver,pattern={{major}}.{{minor}}              # 1.2
+                      type=semver,pattern={{major}}                        # 1
+                      type=raw,value=latest,enable={{is_default_branch}}   # main のとき latest
+                      type=sha,format=short,prefix=sha-                    # sha-<短縮コミット>
+                  labels: |
+                      org.opencontainers.image.title=playwright-e2e-runner
+                      org.opencontainers.image.description=Customized GitHub Actions runner for Playwright E2E (Ubuntu Noble + Node.js + Allure + Japanese locale/fonts)
+                      org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+                      org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+                      org.opencontainers.image.revision=${{ github.sha }}
+                      org.opencontainers.image.created=${{ github.run_started_at }}
+
+            # ビルド & プッシュ（multi-arch + GHA キャッシュ）
+            - name: Build and push
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  push: true
+                  platforms: linux/amd64,linux/arm64
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
